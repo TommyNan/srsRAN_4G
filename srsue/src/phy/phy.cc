@@ -194,10 +194,14 @@ void phy::get_metrics(const srsran::srsran_rat_t& rat, phy_metrics_t* m)
     sfsync.get_current_cell(&cell, &dl_earfcn);
     m->info[0].pci       = cell.id;
     m->info[0].dl_earfcn = dl_earfcn;
+    m->info[0].nof_prb   = cell.nof_prb;
+    m->info[0].scs_hz    = 15000;
 
     for (uint32_t i = 1; i < args.nof_lte_carriers; i++) {
       m->info[i].dl_earfcn = common.cell_state.get_earfcn(i);
       m->info[i].pci       = common.cell_state.get_pci(i);
+      m->info[i].nof_prb   = cell.nof_prb;
+      m->info[i].scs_hz    = 15000;
     }
 
     common.get_ch_metrics(m->ch);

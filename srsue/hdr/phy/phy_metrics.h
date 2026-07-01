@@ -32,6 +32,8 @@ struct info_metrics_t {
 
   uint32_t pci;
   uint32_t dl_earfcn;
+  uint32_t nof_prb; // Carrier bandwidth in PRB
+  uint32_t scs_hz;  // Subcarrier spacing in Hz (15000 for LTE)
 };
 
 #define PHY_METRICS_SET(PARAM)                                                                                         \
@@ -123,6 +125,8 @@ struct dl_metrics_t {
   float fec_iters = 0.0;
   float mcs       = 0.0;
   float evm       = 0.0;
+  float nof_prb   = 0.0; // Average number of PRBs allocated per PDSCH transmission
+  float mimo_rank = 0.0; // Average number of spatial layers of the PDSCH transmissions
 
   void set(const dl_metrics_t& other)
   {
@@ -130,6 +134,8 @@ struct dl_metrics_t {
     PHY_METRICS_SET(fec_iters);
     PHY_METRICS_SET(mcs);
     PHY_METRICS_SET(evm);
+    PHY_METRICS_SET(nof_prb);
+    PHY_METRICS_SET(mimo_rank);
   }
 
   void reset()
@@ -138,6 +144,8 @@ struct dl_metrics_t {
     fec_iters = 0.0f;
     mcs       = 0.0f;
     evm       = 0.0f;
+    nof_prb   = 0.0f;
+    mimo_rank = 0.0f;
   }
 
 private:

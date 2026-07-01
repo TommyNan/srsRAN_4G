@@ -502,6 +502,8 @@ int cc_worker::decode_pdsch(srsran_pdsch_ack_resource_t            ack_resource,
       dl_metrics.mcs = (ue_dl_cfg.cfg.pdsch.grant.tb[0].mcs_idx + ue_dl_cfg.cfg.pdsch.grant.tb[1].mcs_idx) / 2;
     }
     dl_metrics.fec_iters = pdsch_dec->avg_iterations_block / 2;
+    dl_metrics.nof_prb   = ue_dl_cfg.cfg.pdsch.grant.nof_prb;
+    dl_metrics.mimo_rank = ue_dl_cfg.cfg.pdsch.grant.nof_layers;
     phy->set_dl_metrics(cc_idx, dl_metrics);
 
     // Logging

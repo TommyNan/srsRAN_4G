@@ -76,13 +76,12 @@ void metrics_csv::stop()
   }
 }
 
-void metrics_csv::set_metrics_helper(const srsran::rf_metrics_t&  rf,
-                                     const srsran::sys_metrics_t& sys,
-                                     const phy_metrics_t&         phy,
-                                     const mac_metrics_t          mac[SRSRAN_MAX_CARRIERS],
-                                     const rrc_metrics_t&         rrc,
-                                     const uint32_t               cc,
-                                     const uint32_t               r)
+void metrics_csv::set_metrics_helper(const ue_metrics_t&  m,
+                                     const phy_metrics_t& phy,
+                                     const mac_metrics_t  mac[SRSRAN_MAX_CARRIERS],
+                                     const bool           is_nr,
+                                     const uint32_t       cc,
+                                     const uint32_t       r)
 {
   if (not file.is_open()) {
     return;
@@ -90,25 +89,29 @@ void metrics_csv::set_metrics_helper(const srsran::rf_metrics_t&  rf,
 
   file << time_ms << ";";
 
-  // CC and PCI
+  // RAT, CC and PCI
+  file << (is_nr ? "nr" : "lte") << ";";
   file << cc << ";";
   file << phy.info[r].dl_earfcn << ";";
   file << phy.info[r].pci << ";";
 
-  // Print PHY metrics for first CC
+  // Signal quality metrics (RSRQ is not measured by the NR PHY and reads 0)
   file << float_to_string(phy.ch[r].rsrp, 2);
+  file << float_to_string(phy.ch[r].rsrq, 2);
   file << float_to_string(phy.ch[r].pathloss, 2);
   file << float_to_string(phy.sync[r].cfo, 2);
 
-  // Find strongest neighbour for this EARFCN (cells are ordered)
+  // Find strongest neighbour for this EARFCN (cells are ordered). Only LTE neighbour cells are reported by the RRC.
   bool has_neighbour = false;
-  for (auto& c : rrc.neighbour_cells) {
-    if (c.earfcn == phy.info[r].dl_earfcn && c.pci != phy.info[r].pci) {
-      file << c.pci << ";";
-      file << float_to_string(c.rsrp, 2);
-      file << float_to_string(c.cfo_hz, 2);
-      has_neighbour = true;
-      break;
+  if (not is_nr) {
+    for (auto& c : m.stack.rrc.neighbour_cells) {
+      if (c.earfcn == phy.info[r].dl_earfcn && c.pci != phy.info[r].pci) {
+        file << c.pci << ";";
+        file << float_to_string(c.rsrp, 2);
+        file << float_to_string(c.cfo_hz, 2);
+        has_neighbour = true;
+        break;
+      }
     }
   }
   if (!has_neighbour) {
@@ -118,15 +121,18 @@ void metrics_csv::set_metrics_helper(const srsran::rf_metrics_t&  rf,
   }
 
   file << float_to_string(phy.dl[r].mcs, 2);
+  file << float_to_string(phy.dl[r].mimo_rank, 2);
   file << float_to_string(phy.ch[r].sinr, 2);
   file << float_to_string(phy.dl[r].fec_iters, 2);
 
-  if (mac[r].rx_brate > 0) {
-    file << float_to_string(mac[r].rx_brate / (mac[r].nof_tti * 1e-3), 2);
-  } else {
-    file << float_to_string(0, 2);
+  // L1 DL throughput (bit/s) as delivered by the MAC
+  float dl_brate = 0;
+  if (mac[r].rx_brate > 0 && mac[r].nof_tti > 0) {
+    dl_brate = mac[r].rx_brate / (mac[r].nof_tti * 1e-3);
   }
+  file << float_to_string(dl_brate, 2);
 
+  // PDSCH BLER (%)
   int rx_pkts   = mac[r].rx_pkts;
   int rx_errors = mac[r].rx_errors;
   if (rx_pkts > 0) {
@@ -135,13 +141,21 @@ void metrics_csv::set_metrics_helper(const srsran::rf_metrics_t&  rf,
     file << float_to_string(0, 2);
   }
 
+  // PDSCH allocation size, carrier bandwidth and spectral efficiency
+  file << float_to_string(phy.dl[r].nof_prb, 2);
+  file << std::to_string(phy.info[r].nof_prb) << ";";
+  file << float_to_string(phy.info[r].scs_hz / 1000.0f, 2);
+
+  const float carrier_bw_hz = (float)phy.info[r].nof_prb * 12.0f * (float)phy.info[r].scs_hz;
+  file << float_to_string(carrier_bw_hz > 0 ? dl_brate / carrier_bw_hz : 0, 2);
+
   file << float_to_string(phy.sync[r].ta_us, 2);
   file << float_to_string(phy.sync[r].distance_km, 2);
   file << float_to_string(phy.sync[r].speed_kmph, 2);
   file << float_to_string(phy.ul[r].mcs, 2);
   file << float_to_string((float)mac[r].ul_buffer, 2);
 
-  if (mac[r].tx_brate > 0) {
+  if (mac[r].tx_brate > 0 && mac[r].nof_tti > 0) {
     file << float_to_string(mac[r].tx_brate / (mac[r].nof_tti * 1e-3), 2);
   } else {
     file << float_to_string(0, 2);
@@ -156,23 +170,29 @@ void metrics_csv::set_metrics_helper(const srsran::rf_metrics_t&  rf,
     file << float_to_string(0, 2);
   }
 
-  file << float_to_string(rf.rf_o, 2);
-  file << float_to_string(rf.rf_u, 2);
-  file << float_to_string(rf.rf_l, 2);
-  file << (rrc.state == RRC_STATE_CONNECTED ? "1.0" : "0.0") << ";";
+  // Application (IP) level throughput measured at the GW (common for all carriers)
+  file << float_to_string((float)m.gw.dl_tput_mbps, 2);
+  file << float_to_string((float)m.gw.ul_tput_mbps, 2);
+
+  file << float_to_string(m.rf.rf_o, 2);
+  file << float_to_string(m.rf.rf_u, 2);
+  file << float_to_string(m.rf.rf_l, 2);
+  file << ((m.stack.rrc.state == RRC_STATE_CONNECTED || m.stack.rrc_nr.state == RRC_NR_STATE_CONNECTED) ? "1.0"
+                                                                                                        : "0.0")
+       << ";";
 
   // Write system metrics.
-  const srsran::sys_metrics_t& m = sys;
-  file << float_to_string(m.process_realmem, 2);
-  file << std::to_string(m.process_realmem_kB) << ";";
-  file << std::to_string(m.process_virtualmem_kB) << ";";
-  file << float_to_string(m.system_mem, 2);
-  file << float_to_string(m.process_cpu_usage, 2);
-  file << std::to_string(m.thread_count) << ";";
+  const srsran::sys_metrics_t& sys = m.sys;
+  file << float_to_string(sys.process_realmem, 2);
+  file << std::to_string(sys.process_realmem_kB) << ";";
+  file << std::to_string(sys.process_virtualmem_kB) << ";";
+  file << float_to_string(sys.system_mem, 2);
+  file << float_to_string(sys.process_cpu_usage, 2);
+  file << std::to_string(sys.thread_count) << ";";
 
   // Write the cpu metrics.
-  for (uint32_t i = 0, e = m.cpu_count, last_cpu_index = e - 1; i != e; ++i) {
-    file << float_to_string(m.cpu_load[i], 2, (i != last_cpu_index));
+  for (uint32_t i = 0, e = sys.cpu_count, last_cpu_index = e - 1; i != e; ++i) {
+    file << float_to_string(sys.cpu_load[i], 2, (i != last_cpu_index));
   }
 
   file << "\n";
@@ -186,11 +206,11 @@ void metrics_csv::set_metrics(const ue_metrics_t& metrics, const uint32_t period
 
   if (file.is_open() && ue != NULL) {
     if (n_reports == 0 && !file_exists) {
-      file << "time;cc;earfcn;pci;rsrp;pl;cfo;pci_neigh;rsrp_neigh;cfo_neigh;dl_mcs;dl_snr;dl_turbo;dl_brate;dl_bler;"
-              "ul_ta;distance_km;speed_kmph;ul_mcs;ul_buff;ul_brate;ul_"
-              "bler;"
-              "rf_o;rf_"
-              "u;rf_l;is_attached;"
+      file << "time;rat;cc;earfcn;pci;rsrp;rsrq;pl;cfo;pci_neigh;rsrp_neigh;cfo_neigh;"
+              "dl_mcs;dl_mimo_rank;dl_snr;dl_turbo;dl_brate;dl_bler;dl_nof_prb;cell_nof_prb;scs_khz;dl_se_bps_hz;"
+              "ul_ta;distance_km;speed_kmph;ul_mcs;ul_buff;ul_brate;ul_bler;"
+              "gw_dl_tput_mbps;gw_ul_tput_mbps;"
+              "rf_o;rf_u;rf_l;is_attached;"
               "proc_rmem;proc_rmem_kB;proc_vmem_kB;sys_mem;sys_load;thread_count";
 
       // Add the cores.
@@ -204,16 +224,15 @@ void metrics_csv::set_metrics(const ue_metrics_t& metrics, const uint32_t period
 
     // Metrics for LTE carrier
     for (uint32_t r = 0; r < metrics.phy.nof_active_cc; r++) {
-      set_metrics_helper(metrics.rf, metrics.sys, metrics.phy, metrics.stack.mac, metrics.stack.rrc, r, r);
+      set_metrics_helper(metrics, metrics.phy, metrics.stack.mac, false, r, r);
     }
 
     // Metrics for NR carrier
     for (uint32_t r = 0; r < metrics.phy_nr.nof_active_cc; r++) {
-      set_metrics_helper(metrics.rf,
-                         metrics.sys,
+      set_metrics_helper(metrics,
                          metrics.phy_nr,
                          metrics.stack.mac_nr,
-                         metrics.stack.rrc,
+                         true,
                          metrics.phy.nof_active_cc + r, // NR carrier offset
                          r);
     }

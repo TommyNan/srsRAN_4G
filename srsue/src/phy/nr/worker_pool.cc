@@ -255,6 +255,8 @@ bool worker_pool::set_config(const srsran::phy_cfg_nr_t& new_cfg)
   info_metrics_t info = {};
   info.pci            = new_cfg.carrier.pci;
   info.dl_earfcn      = dl_arfcn;
+  info.nof_prb        = new_cfg.carrier.nof_prb;
+  info.scs_hz         = SRSRAN_SUBC_SPACING_NR(new_cfg.carrier.scs);
   phy_state.set_info_metrics(info);
 
   // Best effort to convert NR carrier into LTE cell

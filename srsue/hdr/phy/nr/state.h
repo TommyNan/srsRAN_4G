@@ -421,6 +421,22 @@ public:
   }
 
   /**
+   * @brief Folds the channel metrics measured during a PDSCH reception into the current channel metrics. The fields
+   * that are not measured from the PDSCH (e.g. RSRP, measured from the SSB/TRS) keep their current average, so they
+   * are not diluted towards zero by frequent PDSCH receptions
+   * @param sinr SINR from the PDSCH channel estimation
+   * @param sync_err Time synchronization error from the PDSCH channel estimation
+   */
+  void set_pdsch_channel_metrics(float sinr, float sync_err)
+  {
+    std::lock_guard<std::mutex> lock(metrics_mutex);
+    ch_metrics_t m = ch_metrics;
+    m.sinr         = sinr;
+    m.sync_err     = sync_err;
+    ch_metrics.set(m);
+  }
+
+  /**
    * @brief Sets DL metrics of a given PDSCH transmission
    * @param m Metrics object
    */
@@ -511,14 +527,17 @@ public:
                                uint32_t                             resource_set_id = 0,
                                uint32_t                             K_csi_rs        = 0)
   {
-    // Compute channel metrics and push it
-    ch_metrics_t new_ch_metrics = {};
-    new_ch_metrics.sinr         = new_meas.snr_dB;
-    new_ch_metrics.rsrp         = new_meas.rsrp_dB;
-    new_ch_metrics.rsrq         = 0.0f; // Not supported
-    new_ch_metrics.rssi         = 0.0f; // Not supported
-    new_ch_metrics.sync_err     = new_meas.delay_us;
-    set_channel_metrics(new_ch_metrics);
+    // Compute channel metrics and push it. Fields that are not measured from the SSB/TRS keep their current average
+    {
+      std::lock_guard<std::mutex> lock(metrics_mutex);
+      ch_metrics_t new_ch_metrics = ch_metrics;
+      new_ch_metrics.sinr         = new_meas.snr_dB;
+      new_ch_metrics.rsrp         = new_meas.rsrp_dB;
+      new_ch_metrics.rsrq         = 0.0f; // Not supported
+      new_ch_metrics.rssi         = 0.0f; // Not supported
+      new_ch_metrics.sync_err     = new_meas.delay_us;
+      ch_metrics.set(new_ch_metrics);
+    }
 
     // Compute synch metrics and report it to the PHY state
     sync_metrics_t new_sync_metrics = {};

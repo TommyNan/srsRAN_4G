@@ -353,12 +353,12 @@ bool cc_worker::decode_pdsch_dl()
     dl_m.mcs          = pdsch_cfg.grant.tb[0].mcs;
     dl_m.fec_iters    = pdsch_res.tb[0].avg_iter;
     dl_m.evm          = pdsch_res.evm[0];
+    dl_m.nof_prb      = pdsch_cfg.grant.nof_prb;
+    dl_m.mimo_rank    = pdsch_cfg.grant.nof_layers;
     phy.set_dl_metrics(dl_m);
   }
-  ch_metrics_t ch_metrics = {};
-  ch_metrics.sinr         = ue_dl.chest.snr_db;
-  ch_metrics.sync_err     = ue_dl.chest.sync_error;
-  phy.set_channel_metrics(ch_metrics);
+  // Update SINR and synchronization error without diluting the metrics measured from the SSB/TRS (e.g. RSRP)
+  phy.set_pdsch_channel_metrics(ue_dl.chest.snr_db, ue_dl.chest.sync_error);
   return true;
 }
 
