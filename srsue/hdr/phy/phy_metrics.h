@@ -83,6 +83,7 @@ struct ch_metrics_t {
   float rsrq     = 0.0;
   float rssi     = 0.0;
   float ri       = 0.0;
+  float cqi      = 0.0; // Wideband CQI reported by the UE
   float pathloss = 0.0;
   float sync_err = 0.0;
 
@@ -98,6 +99,7 @@ struct ch_metrics_t {
     PHY_METRICS_SET(rsrq);
     PHY_METRICS_SET(rssi);
     PHY_METRICS_SET(ri);
+    PHY_METRICS_SET(cqi);
     PHY_METRICS_SET(pathloss);
     PHY_METRICS_SET(sync_err);
   }
@@ -111,6 +113,7 @@ struct ch_metrics_t {
     rsrq     = 0.0;
     rssi     = 0.0;
     ri       = 0.0;
+    cqi      = 0.0;
     pathloss = 0.0;
     sync_err = 0.0;
   }

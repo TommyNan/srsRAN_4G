@@ -777,6 +777,7 @@ void phy_common::update_measurements(uint32_t                     cc_idx,
     ch.rsrp         = avg_rsrp_dbm[cc_idx];
     ch.rsrq         = avg_rsrq_db[cc_idx];
     ch.rssi         = avg_rssi_dbm[cc_idx];
+    ch.cqi          = last_cqi[cc_idx];
     ch.pathloss     = pathloss[cc_idx];
     ch.sinr         = avg_sinr_db[cc_idx];
     ch.sync_err     = chest_res.sync_error;

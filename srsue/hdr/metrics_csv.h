@@ -67,6 +67,7 @@ private:
   uint32_t              flush_period_sec = 0;
   uint32_t              flush_time_ms    = 0;
   uint64_t              time_ms          = 0;
+  uint64_t              wallclock_ms     = 0; // UNIX epoch time of the current report in milliseconds
   bool                  file_exists      = false;
 };
 

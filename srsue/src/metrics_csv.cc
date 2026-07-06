@@ -21,6 +21,7 @@
 
 #include "srsue/hdr/metrics_csv.h"
 
+#include <chrono>
 #include <float.h>
 #include <iomanip>
 #include <iostream>
@@ -88,6 +89,7 @@ void metrics_csv::set_metrics_helper(const ue_metrics_t&  m,
   }
 
   file << time_ms << ";";
+  file << wallclock_ms << ";";
 
   // RAT, CC and PCI
   file << (is_nr ? "nr" : "lte") << ";";
@@ -98,6 +100,7 @@ void metrics_csv::set_metrics_helper(const ue_metrics_t&  m,
   // Signal quality metrics (RSRQ is not measured by the NR PHY and reads 0)
   file << float_to_string(phy.ch[r].rsrp, 2);
   file << float_to_string(phy.ch[r].rsrq, 2);
+  file << float_to_string(phy.ch[r].cqi, 2);
   file << float_to_string(phy.ch[r].pathloss, 2);
   file << float_to_string(phy.sync[r].cfo, 2);
 
@@ -141,8 +144,9 @@ void metrics_csv::set_metrics_helper(const ue_metrics_t&  m,
     file << float_to_string(0, 2);
   }
 
-  // PDSCH allocation size, carrier bandwidth and spectral efficiency
+  // PDSCH allocation size, number of slots with PDSCH reception, carrier bandwidth and spectral efficiency
   file << float_to_string(phy.dl[r].nof_prb, 2);
+  file << std::to_string(mac[r].rx_pkts) << ";";
   file << std::to_string(phy.info[r].nof_prb) << ";";
   file << float_to_string(phy.info[r].scs_hz / 1000.0f, 2);
 
@@ -203,11 +207,15 @@ void metrics_csv::set_metrics(const ue_metrics_t& metrics, const uint32_t period
   std::unique_lock<std::mutex> lock(mutex);
 
   time_ms += period_usec / 1000;
+  wallclock_ms =
+      std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+          .count();
 
   if (file.is_open() && ue != NULL) {
     if (n_reports == 0 && !file_exists) {
-      file << "time;rat;cc;earfcn;pci;rsrp;rsrq;pl;cfo;pci_neigh;rsrp_neigh;cfo_neigh;"
-              "dl_mcs;dl_mimo_rank;dl_snr;dl_turbo;dl_brate;dl_bler;dl_nof_prb;cell_nof_prb;scs_khz;dl_se_bps_hz;"
+      file << "time;timestamp_ms;rat;cc;earfcn;pci;rsrp;rsrq;cqi;pl;cfo;pci_neigh;rsrp_neigh;cfo_neigh;"
+              "dl_mcs;dl_mimo_rank;dl_snr;dl_turbo;dl_brate;dl_bler;dl_nof_prb;dl_nof_slots;cell_nof_prb;scs_khz;"
+              "dl_se_bps_hz;"
               "ul_ta;distance_km;speed_kmph;ul_mcs;ul_buff;ul_brate;ul_bler;"
               "gw_dl_tput_mbps;gw_ul_tput_mbps;"
               "rf_o;rf_u;rf_l;is_attached;"

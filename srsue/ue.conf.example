@@ -452,8 +452,10 @@ enable = false
 #                        The CSV file contains one row per carrier and metrics period. The "rat"
 #                        column identifies the RAT of the row (lte/nr), so with an NR carrier
 #                        configured ([rat.nr] nof_carriers >= 1, e.g. 5G SA or NSA) the 5G metrics
-#                        (RSRP, SINR, PDSCH MCS/BLER, allocated PRBs, MIMO rank, L1/application
-#                        throughput, spectral efficiency, ...) are logged in the rows with rat=nr.
+#                        (RSRP, SINR, CQI, PDSCH MCS/BLER, allocated PRBs/slots, MIMO rank,
+#                        L1/application throughput, spectral efficiency, ...) are logged in the
+#                        rows with rat=nr. The timestamp_ms column holds the UNIX epoch time in ms
+#                        to correlate the samples with external tools (e.g. iperf, latency sweeps).
 #
 # metrics_period_secs:   Sets the period at which metrics are requested from the UE.
 #
