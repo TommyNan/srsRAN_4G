@@ -200,8 +200,10 @@ void phy::get_metrics(const srsran::srsran_rat_t& rat, phy_metrics_t* m)
     for (uint32_t i = 1; i < args.nof_lte_carriers; i++) {
       m->info[i].dl_earfcn = common.cell_state.get_earfcn(i);
       m->info[i].pci       = common.cell_state.get_pci(i);
-      m->info[i].nof_prb   = cell.nof_prb;
-      m->info[i].scs_hz    = 15000;
+      // Use the SCell bandwidth if it has been configured, otherwise fall back to the PCell bandwidth
+      const uint32_t scell_nof_prb = common.cell_state.get_nof_prb(i);
+      m->info[i].nof_prb           = scell_nof_prb > 0 ? scell_nof_prb : cell.nof_prb;
+      m->info[i].scs_hz            = 15000;
     }
 
     common.get_ch_metrics(m->ch);
@@ -589,7 +591,7 @@ void phy::set_scell_cmd(srsran_cell_t cell_info, uint32_t cc_idx, uint32_t earfc
       "Finished setting new SCell configuration cc_idx=%d, earfcn=%d, pci=%d", cc_idx, earfcn, cell_info.id);
 
   // Configure secondary serving cell, allows this component carrier to execute PHY processing
-  common.cell_state.configure(cc_idx, earfcn, cell_info.id);
+  common.cell_state.configure(cc_idx, earfcn, cell_info.id, cell_info.nof_prb);
 
   stack->set_scell_complete(true);
 }

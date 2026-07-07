@@ -49,10 +49,11 @@ private:
   static constexpr uint32_t activation_delay_tti  = FDD_HARQ_DELAY_DL_MS + FDD_HARQ_DELAY_UL_MS;
   static constexpr uint32_t activation_margin_tti = FDD_HARQ_DELAY_DL_MS;
 
-  // SCell EARFCN, PCI, configured and enabled list
+  // SCell EARFCN, PCI, bandwidth, configured and enabled list
   struct cfg {
     uint32_t earfcn                            = 0;
     uint32_t pci                               = 0;
+    uint32_t nof_prb                           = 0;
     enum { none = 0, inactive, active } status = none;
   };
 
@@ -140,7 +141,7 @@ public:
     }
   }
 
-  void configure(uint32_t cc_idx, uint32_t earfcn, uint32_t pci)
+  void configure(uint32_t cc_idx, uint32_t earfcn, uint32_t pci, uint32_t nof_prb)
   {
     std::unique_lock<std::mutex> lock(mutex);
 
@@ -149,9 +150,10 @@ public:
       return;
     }
 
-    scell_cfg[cc_idx].status = cfg::inactive;
-    scell_cfg[cc_idx].earfcn = earfcn;
-    scell_cfg[cc_idx].pci    = pci;
+    scell_cfg[cc_idx].status  = cfg::inactive;
+    scell_cfg[cc_idx].earfcn  = earfcn;
+    scell_cfg[cc_idx].pci     = pci;
+    scell_cfg[cc_idx].nof_prb = nof_prb;
   }
 
   bool is_active(uint32_t cc_idx, uint32_t tti) const
@@ -200,10 +202,11 @@ public:
 
     activation_state = idle;
 
-    cfg& e   = scell_cfg[cc_idx];
-    e.status = cfg::none;
-    e.earfcn = 0;
-    e.pci    = UINT32_MAX;
+    cfg& e    = scell_cfg[cc_idx];
+    e.status  = cfg::none;
+    e.earfcn  = 0;
+    e.pci     = UINT32_MAX;
+    e.nof_prb = 0;
   }
 
   void reset()
@@ -213,9 +216,10 @@ public:
     activation_state = idle;
 
     for (cfg& e : scell_cfg) {
-      e.status = cfg::none;
-      e.earfcn = 0;
-      e.pci    = UINT32_MAX;
+      e.status  = cfg::none;
+      e.earfcn  = 0;
+      e.pci     = UINT32_MAX;
+      e.nof_prb = 0;
     }
   }
 
@@ -241,6 +245,18 @@ public:
     }
 
     return scell_cfg[cc_idx].earfcn;
+  }
+
+  uint32_t get_nof_prb(uint32_t cc_idx)
+  {
+    std::unique_lock<std::mutex> lock(mutex);
+
+    if (cc_idx == 0 or cc_idx >= SRSRAN_MAX_CARRIERS) {
+      ERROR("CC IDX %d out-of-range", cc_idx);
+      return 0;
+    }
+
+    return scell_cfg[cc_idx].nof_prb;
   }
 };
 } // namespace scell
