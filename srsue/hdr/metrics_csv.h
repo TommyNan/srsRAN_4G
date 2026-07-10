@@ -57,7 +57,10 @@ private:
                           const mac_metrics_t          mac[SRSRAN_MAX_CARRIERS],
                           const rrc_metrics_t&         rrc,
                           const uint32_t               cc,
-                          const uint32_t               r);
+                          const uint32_t               r,
+                          const rrc_nr_metrics_t&      rrc_nr,
+                          const gw_metrics_t&          gw,
+                          const bool                   is_nr);
 
   std::string float_to_string(float f, int digits, bool add_semicolon = true);
 
@@ -68,6 +71,7 @@ private:
   uint32_t              flush_period_sec = 0;
   uint32_t              flush_time_ms    = 0;
   uint64_t              time_ms          = 0;
+  uint64_t              wallclock_ms     = 0; // UNIX epoch time of the current report in milliseconds
   bool                  file_exists      = false;
 };
 

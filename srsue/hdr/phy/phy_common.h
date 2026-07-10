@@ -274,6 +274,13 @@ public:
     return avg_sinr_db[cc_idx];
   }
 
+  // Stores the last wideband CQI computed by the workers so it can be reported in the channel metrics
+  void set_cqi_metrics(uint32_t cc_idx, float cqi)
+  {
+    std::unique_lock<std::mutex> lock(meas_mutex);
+    last_cqi[cc_idx] = cqi;
+  }
+
   float get_pusch_power()
   {
     std::unique_lock<std::mutex> lock(meas_mutex);
@@ -333,6 +340,7 @@ private:
   std::array<float, SRSRAN_MAX_CARRIERS> avg_snr_db      = {};
   std::array<float, SRSRAN_MAX_CARRIERS> avg_noise       = {};
   std::array<float, SRSRAN_MAX_CARRIERS> avg_rsrp_neigh  = {};
+  std::array<float, SRSRAN_MAX_CARRIERS> last_cqi        = {};
 
   srsran_cfr_cfg_t cfr_config = {};
 

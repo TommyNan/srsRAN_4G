@@ -28,6 +28,7 @@
 #include "srsran/interfaces/ue_nr_interfaces.h"
 #include "srsran/srsran.h"
 #include <array>
+#include <cmath>
 #include <mutex>
 #include <vector>
 
@@ -63,6 +64,14 @@ private:
   ch_metrics_t       ch_metrics   = {};
   dl_metrics_t       dl_metrics   = {};
   ul_metrics_t       ul_metrics   = {};
+  // RSRP (SSB/TRS only), carrier RSSI and reported wideband CQI keep their own averages and sample counts, so the
+  // frequent PDSCH-only channel-metric updates do not age their weighting within the metrics period
+  float              avg_rsrp_dB    = NAN;
+  uint32_t           rsrp_count     = 0;
+  float              avg_rssi_re_dB = NAN; // Average total power per resource element over the carrier bandwidth
+  uint32_t           rssi_count     = 0;
+  float              avg_cqi        = NAN;
+  uint32_t           cqi_count      = 0;
   mutable std::mutex metrics_mutex;
 
   /// CSI-RS measurements
@@ -85,6 +94,12 @@ private:
     ch_metrics.reset();
     dl_metrics.reset();
     ul_metrics.reset();
+    avg_rsrp_dB    = NAN;
+    rsrp_count     = 0;
+    avg_rssi_re_dB = NAN;
+    rssi_count     = 0;
+    avg_cqi        = NAN;
+    cqi_count      = 0;
   }
 
 public:
@@ -387,6 +402,18 @@ public:
       }
     }
 
+    // Store the reported wideband CQI in the channel metrics. It is averaged with its own sample count so other
+    // channel-metric updates do not age its weighting
+    for (uint32_t i = 0; i < uci_data.cfg.nof_csi; i++) {
+      if (uci_data.cfg.csi[i].cfg.quantity == SRSRAN_CSI_REPORT_QUANTITY_CRI_RI_PMI_CQI &&
+          uci_data.cfg.csi[i].cfg.freq_cfg == SRSRAN_CSI_REPORT_FREQ_WIDEBAND) {
+        std::lock_guard<std::mutex> lock(metrics_mutex);
+        avg_cqi = SRSRAN_VEC_SAFE_CMA((float)uci_data.value.csi[i].wideband_cri_ri_pmi_cqi.cqi, avg_cqi, cqi_count);
+        cqi_count++;
+        break;
+      }
+    }
+
     uci_data.cfg.pucch.rnti = stack->get_ul_sched_rnti_nr(slot_cfg.idx).id;
   }
 
@@ -418,6 +445,39 @@ public:
   {
     std::lock_guard<std::mutex> lock(metrics_mutex);
     ch_metrics.set(m);
+  }
+
+  /**
+   * @brief Folds the channel metrics measured during a PDSCH reception into the current channel metrics. Only the
+   * PDSCH-measured fields (SINR and synchronization error) carry new samples; the other fields keep their current
+   * content. RSRP and CQI are averaged separately with their own sample counts (see avg_rsrp_dB and avg_cqi), so
+   * frequent PDSCH receptions neither dilute them towards zero nor age their weighting
+   * @param sinr SINR from the PDSCH channel estimation
+   * @param sync_err Time synchronization error from the PDSCH channel estimation
+   */
+  void set_pdsch_channel_metrics(float sinr, float sync_err)
+  {
+    std::lock_guard<std::mutex> lock(metrics_mutex);
+    ch_metrics_t m = ch_metrics;
+    m.sinr         = sinr;
+    m.sync_err     = sync_err;
+    ch_metrics.set(m);
+  }
+
+  /**
+   * @brief Processes a new total power measurement of the carrier, given as the average linear power per resource
+   * element over the whole carrier bandwidth in the same scale as the CSI-RS/TRS measurements (it shall be measured
+   * on the same resource grid). It is used to derive the carrier RSSI and the RSRQ
+   * @param rssi_re Average linear power per resource element
+   */
+  void new_carrier_rssi_measurement(float rssi_re)
+  {
+    if (not std::isnormal(rssi_re)) {
+      return;
+    }
+    std::lock_guard<std::mutex> lock(metrics_mutex);
+    avg_rssi_re_dB = SRSRAN_VEC_SAFE_CMA(srsran_convert_power_to_dB(rssi_re), avg_rssi_re_dB, rssi_count);
+    rssi_count++;
   }
 
   /**
@@ -463,6 +523,22 @@ public:
     m.ch[cc]    = ch_metrics;
     m.dl[cc]    = dl_metrics;
     m.ul[cc]    = ul_metrics;
+
+    // RSRP and CQI are averaged with their own sample counts (see avg_rsrp_dB/avg_cqi)
+    m.ch[cc].rsrp = std::isnan(avg_rsrp_dB) ? 0.0f : avg_rsrp_dB;
+    m.ch[cc].cqi  = std::isnan(avg_cqi) ? 0.0f : avg_cqi;
+
+    // Derive the carrier RSSI (total power over the carrier bandwidth, same full-scale reference as the NR RSRP)
+    // and the RSRQ from the average total power per resource element measured on the CSI-RS/TRS occasions.
+    // Following the SS-RSRQ structure of TS 38.215, RSRQ = N x RSRP / RSSI with RSSI measured over N resource
+    // blocks of 12 resource elements: RSRQ = RSRP / (12 x average RE power)
+    if (not std::isnan(avg_rssi_re_dB) and info_metrics.nof_prb > 0) {
+      m.ch[cc].rssi = avg_rssi_re_dB + srsran_convert_power_to_dB(12.0f * (float)info_metrics.nof_prb);
+      if (not std::isnan(avg_rsrp_dB)) {
+        m.ch[cc].rsrq = avg_rsrp_dB - avg_rssi_re_dB - srsran_convert_power_to_dB(12.0f);
+      }
+    }
+
     m.nof_active_cc++;
 
     // Reset all metrics
@@ -511,14 +587,20 @@ public:
                                uint32_t                             resource_set_id = 0,
                                uint32_t                             K_csi_rs        = 0)
   {
-    // Compute channel metrics and push it
-    ch_metrics_t new_ch_metrics = {};
-    new_ch_metrics.sinr         = new_meas.snr_dB;
-    new_ch_metrics.rsrp         = new_meas.rsrp_dB;
-    new_ch_metrics.rsrq         = 0.0f; // Not supported
-    new_ch_metrics.rssi         = 0.0f; // Not supported
-    new_ch_metrics.sync_err     = new_meas.delay_us;
-    set_channel_metrics(new_ch_metrics);
+    // Compute channel metrics and push it. SINR and synchronization error are measured on every push (SSB/TRS and
+    // PDSCH), so the shared sample count of ch_metrics_t is correct for them. RSRP is measured only here: average it
+    // with its own sample count so the frequent PDSCH-only updates do not age its weighting. RSRQ and RSSI are not
+    // supported and read 0
+    {
+      std::lock_guard<std::mutex> lock(metrics_mutex);
+      ch_metrics_t new_ch_metrics = ch_metrics;
+      new_ch_metrics.sinr         = new_meas.snr_dB;
+      new_ch_metrics.sync_err     = new_meas.delay_us;
+      ch_metrics.set(new_ch_metrics);
+
+      avg_rsrp_dB = SRSRAN_VEC_SAFE_CMA(new_meas.rsrp_dB, avg_rsrp_dB, rsrp_count);
+      rsrp_count++;
+    }
 
     // Compute synch metrics and report it to the PHY state
     sync_metrics_t new_sync_metrics = {};

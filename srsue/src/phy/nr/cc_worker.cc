@@ -353,12 +353,12 @@ bool cc_worker::decode_pdsch_dl()
     dl_m.mcs          = pdsch_cfg.grant.tb[0].mcs;
     dl_m.fec_iters    = pdsch_res.tb[0].avg_iter;
     dl_m.evm          = pdsch_res.evm[0];
+    dl_m.nof_prb      = pdsch_cfg.grant.nof_prb;
+    dl_m.mimo_rank    = pdsch_cfg.grant.nof_layers;
     phy.set_dl_metrics(dl_m);
   }
-  ch_metrics_t ch_metrics = {};
-  ch_metrics.sinr         = ue_dl.chest.snr_db;
-  ch_metrics.sync_err     = ue_dl.chest.sync_error;
-  phy.set_channel_metrics(ch_metrics);
+  // Update SINR and synchronization error without diluting the metrics measured from the SSB/TRS (e.g. RSRP)
+  phy.set_pdsch_channel_metrics(ue_dl.chest.snr_db, ue_dl.chest.sync_error);
   return true;
 }
 
@@ -505,6 +505,14 @@ bool cc_worker::measure_csi()
 
     // Report new measurement to the PHY state
     phy.new_nzp_csi_rs_channel_measurement(cfg, measurements, resource_set_id);
+  }
+
+  // Measure the average total power per resource element over the whole carrier bandwidth and slot. It is measured
+  // on the same resource grid as the CSI-RS/TRS measurements above, so it shares their full-scale reference. The PHY
+  // state uses it to derive the carrier RSSI and the RSRQ
+  if (estimate_fft) {
+    phy.new_carrier_rssi_measurement(
+        srsran_vec_avg_power_cf(ue_dl.sf_symbols[0], SRSRAN_SLOT_LEN_RE_NR(cfg.carrier.nof_prb)));
   }
 
   return true;
