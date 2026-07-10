@@ -507,6 +507,14 @@ bool cc_worker::measure_csi()
     phy.new_nzp_csi_rs_channel_measurement(cfg, measurements, resource_set_id);
   }
 
+  // Measure the average total power per resource element over the whole carrier bandwidth and slot. It is measured
+  // on the same resource grid as the CSI-RS/TRS measurements above, so it shares their full-scale reference. The PHY
+  // state uses it to derive the carrier RSSI and the RSRQ
+  if (estimate_fft) {
+    phy.new_carrier_rssi_measurement(
+        srsran_vec_avg_power_cf(ue_dl.sf_symbols[0], SRSRAN_SLOT_LEN_RE_NR(cfg.carrier.nof_prb)));
+  }
+
   return true;
 }
 

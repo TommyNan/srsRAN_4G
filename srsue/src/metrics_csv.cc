@@ -101,9 +101,11 @@ void metrics_csv::set_metrics_helper(const srsran::rf_metrics_t&  rf,
   file << phy.info[r].dl_earfcn << ";";
   file << phy.info[r].pci << ";";
 
-  // Signal quality metrics (RSRQ is not measured by the NR PHY and reads 0)
+  // Signal quality metrics (NR: RSSI and RSRQ are derived from the CSI-RS/TRS occasions and read 0 until the gNB
+  // configures NZP-CSI-RS resources)
   file << float_to_string(phy.ch[r].rsrp, 2);
   file << float_to_string(phy.ch[r].rsrq, 2);
+  file << float_to_string(phy.ch[r].rssi, 2);
   file << float_to_string(phy.ch[r].cqi, 2);
   file << float_to_string(phy.ch[r].pathloss, 2);
   file << float_to_string(phy.sync[r].cfo, 2);
@@ -214,7 +216,7 @@ void metrics_csv::set_metrics(const ue_metrics_t& metrics, const uint32_t period
 
   if (file.is_open() && ue != NULL) {
     if (n_reports == 0 && !file_exists) {
-      file << "time;timestamp_ms;rat;cc;earfcn;pci;rsrp;rsrq;cqi;pl;cfo;pci_neigh;rsrp_neigh;cfo_neigh;"
+      file << "time;timestamp_ms;rat;cc;earfcn;pci;rsrp;rsrq;rssi;cqi;pl;cfo;pci_neigh;rsrp_neigh;cfo_neigh;"
               "dl_mcs;dl_mimo_rank;dl_snr;dl_turbo;dl_brate;dl_bler;dl_nof_prb;dl_nof_slots;cell_nof_prb;scs_khz;"
               "dl_se_bps_hz;"
               "ul_ta;distance_km;speed_kmph;ul_mcs;ul_buff;ul_brate;ul_bler;"
