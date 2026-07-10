@@ -77,12 +77,16 @@ void metrics_csv::stop()
   }
 }
 
-void metrics_csv::set_metrics_helper(const ue_metrics_t&  m,
-                                     const phy_metrics_t& phy,
-                                     const mac_metrics_t  mac[SRSRAN_MAX_CARRIERS],
-                                     const bool           is_nr,
-                                     const uint32_t       cc,
-                                     const uint32_t       r)
+void metrics_csv::set_metrics_helper(const srsran::rf_metrics_t&  rf,
+                                     const srsran::sys_metrics_t& sys,
+                                     const phy_metrics_t&         phy,
+                                     const mac_metrics_t          mac[SRSRAN_MAX_CARRIERS],
+                                     const rrc_metrics_t&         rrc,
+                                     const uint32_t               cc,
+                                     const uint32_t               r,
+                                     const rrc_nr_metrics_t&      rrc_nr,
+                                     const gw_metrics_t&          gw,
+                                     const bool                   is_nr)
 {
   if (not file.is_open()) {
     return;
@@ -107,7 +111,7 @@ void metrics_csv::set_metrics_helper(const ue_metrics_t&  m,
   // Find strongest neighbour for this EARFCN (cells are ordered). Only LTE neighbour cells are reported by the RRC.
   bool has_neighbour = false;
   if (not is_nr) {
-    for (auto& c : m.stack.rrc.neighbour_cells) {
+    for (auto& c : rrc.neighbour_cells) {
       if (c.earfcn == phy.info[r].dl_earfcn && c.pci != phy.info[r].pci) {
         file << c.pci << ";";
         file << float_to_string(c.rsrp, 2);
@@ -175,18 +179,15 @@ void metrics_csv::set_metrics_helper(const ue_metrics_t&  m,
   }
 
   // Application (IP) level throughput measured at the GW (common for all carriers)
-  file << float_to_string((float)m.gw.dl_tput_mbps, 2);
-  file << float_to_string((float)m.gw.ul_tput_mbps, 2);
+  file << float_to_string((float)gw.dl_tput_mbps, 2);
+  file << float_to_string((float)gw.ul_tput_mbps, 2);
 
-  file << float_to_string(m.rf.rf_o, 2);
-  file << float_to_string(m.rf.rf_u, 2);
-  file << float_to_string(m.rf.rf_l, 2);
-  file << ((m.stack.rrc.state == RRC_STATE_CONNECTED || m.stack.rrc_nr.state == RRC_NR_STATE_CONNECTED) ? "1.0"
-                                                                                                        : "0.0")
-       << ";";
+  file << float_to_string(rf.rf_o, 2);
+  file << float_to_string(rf.rf_u, 2);
+  file << float_to_string(rf.rf_l, 2);
+  file << ((rrc.state == RRC_STATE_CONNECTED || rrc_nr.state == RRC_NR_STATE_CONNECTED) ? "1.0" : "0.0") << ";";
 
   // Write system metrics.
-  const srsran::sys_metrics_t& sys = m.sys;
   file << float_to_string(sys.process_realmem, 2);
   file << std::to_string(sys.process_realmem_kB) << ";";
   file << std::to_string(sys.process_virtualmem_kB) << ";";
@@ -232,17 +233,30 @@ void metrics_csv::set_metrics(const ue_metrics_t& metrics, const uint32_t period
 
     // Metrics for LTE carrier
     for (uint32_t r = 0; r < metrics.phy.nof_active_cc; r++) {
-      set_metrics_helper(metrics, metrics.phy, metrics.stack.mac, false, r, r);
+      set_metrics_helper(metrics.rf,
+                         metrics.sys,
+                         metrics.phy,
+                         metrics.stack.mac,
+                         metrics.stack.rrc,
+                         r,
+                         r,
+                         metrics.stack.rrc_nr,
+                         metrics.gw,
+                         false);
     }
 
     // Metrics for NR carrier
     for (uint32_t r = 0; r < metrics.phy_nr.nof_active_cc; r++) {
-      set_metrics_helper(metrics,
+      set_metrics_helper(metrics.rf,
+                         metrics.sys,
                          metrics.phy_nr,
                          metrics.stack.mac_nr,
-                         true,
+                         metrics.stack.rrc,
                          metrics.phy.nof_active_cc + r, // NR carrier offset
-                         r);
+                         r,
+                         metrics.stack.rrc_nr,
+                         metrics.gw,
+                         true);
     }
 
     n_reports++;

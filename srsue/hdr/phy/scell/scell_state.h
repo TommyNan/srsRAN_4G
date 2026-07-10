@@ -141,7 +141,8 @@ public:
     }
   }
 
-  void configure(uint32_t cc_idx, uint32_t earfcn, uint32_t pci, uint32_t nof_prb)
+  // nof_prb defaults to 0 (unknown bandwidth) so existing callers of the original three-argument form keep compiling
+  void configure(uint32_t cc_idx, uint32_t earfcn, uint32_t pci, uint32_t nof_prb = 0)
   {
     std::unique_lock<std::mutex> lock(mutex);
 
